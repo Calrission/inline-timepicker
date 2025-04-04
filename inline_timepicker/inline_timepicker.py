@@ -9,8 +9,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 @dataclass
 class InlineTimepickerData:
-    min_time: datetime.time
-    max_time: datetime.time
     current_time: datetime.time
     minute_step: int
     hour_step: int
@@ -31,18 +29,19 @@ class InlineTimepicker:
     def _set_user_info(self, chat_id: int, data: Optional[InlineTimepickerData]):
         self.data[chat_id] = data
 
-    def init(self,
-             base_time: datetime.time,
-             min_time: datetime.time,
-             max_time: datetime.time,
-             chat_id: int,  # Now required
-             minute_step: int = 15,
-             hour_step: int = 1):
-        
+    def init(
+        self,
+        chat_id: int,  # Now required as first positional argument
+        base_time: datetime.time = datetime.time(12, 0),
+        minute_step: int = 15,
+        hour_step: int = 1
+    ):
         self._set_user_info(
             chat_id,
             InlineTimepickerData(
-                min_time, max_time, base_time, minute_step, hour_step
+                current_time=base_time,
+                minute_step=minute_step,
+                hour_step=hour_step
             )
         )
 
@@ -52,62 +51,70 @@ class InlineTimepicker:
     def reset(self, chat_id: int):
         self._set_user_info(chat_id, None)
 
+    def _adjust_time(self, time: datetime.time, hours: int = 0, minutes: int = 0) -> datetime.time:
+        """Adjust time with proper circular behavior for 24-hour format"""
+        total_minutes = time.hour * 60 + time.minute
+        total_minutes += hours * 60 + minutes
+        
+        # Handle 24-hour circular behavior
+        total_minutes %= 24 * 60
+        
+        # Convert back to hours and minutes
+        new_hour = total_minutes // 60
+        new_minute = total_minutes % 60
+        
+        # Special case: 24:00 should be displayed as 24:00
+        if new_hour == 0 and (hours or minutes):
+            new_hour = 24
+            new_minute = 0
+            
+        return datetime.time(new_hour if new_hour != 0 else 24, new_minute)
+
     def get_keyboard(self, chat_id: int) -> InlineKeyboardMarkup:
         if not self.is_inited(chat_id):
-            raise ValueError('inline_timepicker is not inited properly')
+            raise ValueError('Timepicker not initialized')
 
         builder = InlineKeyboardBuilder()
         user_info = self._get_user_info(chat_id)
+        current_time = user_info.current_time
         
-        # Convert times to datetime for comparison
-        curr_dt = datetime.datetime.combine(datetime.date.today(), user_info.current_time)
-        min_dt = datetime.datetime.combine(datetime.date.today(), user_info.min_time)
-        max_dt = datetime.datetime.combine(datetime.date.today(), user_info.max_time)
+         # Simply use the actual hour (0-23) for display
+        display_hour = current_time.hour
+        display_minute = current_time.minute
 
-        # Time deltas for steps
-        minute_step = datetime.timedelta(minutes=user_info.minute_step)
-        hour_step = datetime.timedelta(hours=user_info.hour_step)
-
-        # Increase buttons
+        # Always show arrows (circular navigation)
+        # Hour increase button
         builder.button(
-            text="↑" if curr_dt + hour_step <= max_dt else " ",
-            callback_data=TimepickerCallback(
-                action="inc" if curr_dt + hour_step <= max_dt else "wrong_choice",
-                data="hour"
-            )
+            text="↑", 
+            callback_data=TimepickerCallback(action="inc", data="hour")
         )
+        
+        # Minute increase button
         builder.button(
-            text="↑" if curr_dt + minute_step <= max_dt else " ",
-            callback_data=TimepickerCallback(
-                action="inc" if curr_dt + minute_step <= max_dt else "wrong_choice",
-                data="minute"
-            )
+            text="↑", 
+            callback_data=TimepickerCallback(action="inc", data="minute")
         )
 
-        # Time display
         builder.button(
-            text=f"{user_info.current_time.hour:02d}",
-            callback_data=TimepickerCallback(action="wrong_choice", data="-")
+        text=f"{display_hour:02d}",  # This will show 00 for midnight
+        callback_data=TimepickerCallback(action="wrong_choice", data="-")
         )
+        
         builder.button(
-            text=f"{user_info.current_time.minute:02d}",
+            text=f"{display_minute:02d}",
             callback_data=TimepickerCallback(action="wrong_choice", data="-")
         )
 
-        # Decrease buttons
+        # Hour decrease button
         builder.button(
-            text="↓" if curr_dt - hour_step >= min_dt else " ",
-            callback_data=TimepickerCallback(
-                action="dec" if curr_dt - hour_step >= min_dt else "wrong_choice",
-                data="hour"
-            )
+            text="↓", 
+            callback_data=TimepickerCallback(action="dec", data="hour")
         )
+        
+        # Minute decrease button
         builder.button(
-            text="↓" if curr_dt - minute_step >= min_dt else " ",
-            callback_data=TimepickerCallback(
-                action="dec" if curr_dt - minute_step >= min_dt else "wrong_choice",
-                data="minute"
-            )
+            text="↓", 
+            callback_data=TimepickerCallback(action="dec", data="minute")
         )
 
         # OK button
@@ -124,33 +131,43 @@ class InlineTimepicker:
             raise ValueError("Timepicker not initialized")
 
         user_info = self._get_user_info(chat_id)
-        curr_dt = datetime.datetime.combine(datetime.date.today(), user_info.current_time)
-        min_dt = datetime.datetime.combine(datetime.date.today(), user_info.min_time)
-        max_dt = datetime.datetime.combine(datetime.date.today(), user_info.max_time)
+        current_time = user_info.current_time
 
         if callback_data.action == 'success':
             self.reset(chat_id)
-            return user_info.current_time
+            return current_time  # Always return proper time object (0-23 hours)
 
-        if callback_data.action == 'inc':
-            delta = datetime.timedelta(
-                hours=user_info.hour_step if callback_data.data == 'hour' else 0,
-                minutes=user_info.minute_step if callback_data.data == 'minute' else 0
-            )
-            new_dt = curr_dt + delta
-        elif callback_data.action == 'dec':
-            delta = datetime.timedelta(
-                hours=user_info.hour_step if callback_data.data == 'hour' else 0,
-                minutes=user_info.minute_step if callback_data.data == 'minute' else 0
-            )
-            new_dt = curr_dt - delta
-        else:
-            return None
+        new_hour = current_time.hour
+        new_minute = current_time.minute
 
-        if min_dt <= new_dt <= max_dt:
-            new_time = new_dt.time()
-            user_info.current_time = new_time
-            self._set_user_info(chat_id, user_info)
-            return None
+        if callback_data.action == 'inc' and callback_data.data == 'minute':
+            new_minute += user_info.minute_step
+            if new_minute >= 60:
+                new_minute -= 60
+                new_hour += 1
+            if new_hour >= 24:
+                new_hour = 0
 
+        elif callback_data.action == 'dec' and callback_data.data == 'minute':
+            new_minute -= user_info.minute_step
+            if new_minute < 0:
+                new_minute += 60
+                new_hour -= 1
+            if new_hour < 0:
+                new_hour = 23
+
+        elif callback_data.action == 'inc' and callback_data.data == 'hour':
+            new_hour += user_info.hour_step
+            if new_hour >= 24:
+                new_hour = 0
+
+        elif callback_data.action == 'dec' and callback_data.data == 'hour':
+            new_hour -= user_info.hour_step
+            if new_hour < 0:
+                new_hour = 23
+
+        # Store time properly (0-23 hours)
+        new_time = datetime.time(new_hour, new_minute)
+        user_info.current_time = new_time
+        self._set_user_info(chat_id, user_info)
         return None

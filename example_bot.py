@@ -19,11 +19,12 @@ inline_timepicker = InlineTimepicker()
 
 @dp.message(Command('time'))
 async def send_welcome(message: types.Message):
+    # Correct usage - chat_id is first positional argument
     inline_timepicker.init(
-        datetime.time(12),
-        datetime.time(1),
-        datetime.time(23),
-        chat_id=message.from_user.id  # Explicitly provide chat_id
+        message.from_user.id,  # chat_id comes first
+        base_time=datetime.time(12, 0),
+        minute_step=15,
+        hour_step=1
     )
 
     await message.answer(
