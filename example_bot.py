@@ -1,9 +1,7 @@
 import logging
 import sys
-import datetime
-from typing import Dict
 import asyncio
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery
 from inline_timepicker.inline_timepicker import InlineTimepicker, TimepickerCallback
@@ -16,35 +14,33 @@ from config import API_TOKEN
 dp = Dispatcher()
 inline_timepicker = InlineTimepicker()
 
+async def get_user_locale(user: types.User) -> str:
+    """Get user locale or fallback to en_US"""
+    return user.language_code or "en_US"
 
 @dp.message(Command('time'))
-async def send_welcome(message: types.Message):
-    # Correct usage - chat_id is first positional argument
-    inline_timepicker.init(
-        message.from_user.id,  # chat_id comes first
-        base_time=datetime.time(12, 0),
-        minute_step=15,
-        hour_step=1
-    )
-
+async def show_timepicker(message: types.Message):
+    locale = await get_user_locale(message.from_user)
+    inline_timepicker.init(message.from_user.id)
     await message.answer(
-        text='Select time:',
-        reply_markup=inline_timepicker.get_keyboard(message.from_user.id)
+        "Select time:",
+        reply_markup=inline_timepicker.get_keyboard(message.from_user.id, locale)
     )
 
 @dp.callback_query(TimepickerCallback.filter())
-async def cb_handler(query: CallbackQuery, callback_data: TimepickerCallback):
-    await query.answer()
+async def handle_timepicker(query: CallbackQuery, callback_data: TimepickerCallback):
+    locale = await get_user_locale(query.from_user)
     handle_result = inline_timepicker.handle(query.from_user.id, callback_data)
-
-    if handle_result is not None:
+    
+    if handle_result is not None:  # Time was selected
+        formatted_time = inline_timepicker.format_time_output(handle_result, locale)
         await query.message.edit_text(
-            f"Selected time: {handle_result.strftime('%H:%M')}",
+            f"Selected time: {formatted_time}",
             reply_markup=None
         )
-    else:
+    else:  # Time was adjusted
         await query.message.edit_reply_markup(
-            reply_markup=inline_timepicker.get_keyboard(query.from_user.id)
+            reply_markup=inline_timepicker.get_keyboard(query.from_user.id, locale)
         )
 
 
