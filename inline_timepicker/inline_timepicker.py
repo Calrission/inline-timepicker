@@ -1,3 +1,4 @@
+import abc
 import datetime
 from dataclasses import dataclass
 from typing import Optional
@@ -7,15 +8,42 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+
+@dataclass
+class Localization(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def OK(self):
+        pass
+
+    @property
+    @abc.abstractmethod
+    def Cancel(self):
+        pass
+
+
+class EnglishLocalization(Localization):
+    @property
+    def OK(self):
+        return "OK"
+
+    @property
+    def Cancel(self):
+        return "Cancel"
+
+
 @dataclass
 class InlineTimepickerData:
     current_time: datetime.time
     minute_step: int
     hour_step: int
+    localization: Localization
+
 
 class TimepickerCallback(CallbackData, prefix="inline_timepicker"):
-    action: str  # 'inc', 'dec', 'toggle', 'success', 'wrong_choice'
-    data: str    # 'hour', 'minute', 'period', '-'
+    action: str  # 'inc', 'dec', 'toggle', 'success', 'cancel', 'wrong_choice'
+    data: str  # 'hour', 'minute', 'period', '-'
+
 
 class InlineTimepicker:
     def __init__(self):
@@ -28,13 +56,16 @@ class InlineTimepicker:
         self.data[chat_id] = data
 
     def init(self, chat_id: int, base_time: datetime.time = datetime.time(12, 0),
-             minute_step: int = 15, hour_step: int = 1):
+             minute_step: int = 15, hour_step: int = 1, localization: Optional[Localization] = None):
+        if localization is None:
+            localization = EnglishLocalization()
         self._set_user_info(
             chat_id,
             InlineTimepickerData(
                 current_time=base_time,
                 minute_step=minute_step,
-                hour_step=hour_step
+                hour_step=hour_step,
+                localization=localization
             )
         )
 
@@ -79,12 +110,16 @@ class InlineTimepicker:
         if use_12h:
             display_hour = current_time.hour % 12 or 12
             period = "AM" if current_time.hour < 12 else "PM"
-            builder.button(text=f"{display_hour:02d}", callback_data=TimepickerCallback(action="wrong_choice", data="-"))
-            builder.button(text=f"{current_time.minute:02d}", callback_data=TimepickerCallback(action="wrong_choice", data="-"))
+            builder.button(text=f"{display_hour:02d}",
+                           callback_data=TimepickerCallback(action="wrong_choice", data="-"))
+            builder.button(text=f"{current_time.minute:02d}",
+                           callback_data=TimepickerCallback(action="wrong_choice", data="-"))
             builder.button(text=period, callback_data=TimepickerCallback(action="toggle", data="period"))
         else:
-            builder.button(text=f"{current_time.hour:02d}", callback_data=TimepickerCallback(action="wrong_choice", data="-"))
-            builder.button(text=f"{current_time.minute:02d}", callback_data=TimepickerCallback(action="wrong_choice", data="-"))
+            builder.button(text=f"{current_time.hour:02d}",
+                           callback_data=TimepickerCallback(action="wrong_choice", data="-"))
+            builder.button(text=f"{current_time.minute:02d}",
+                           callback_data=TimepickerCallback(action="wrong_choice", data="-"))
 
         # Decrement buttons row
         builder.button(text="↓", callback_data=TimepickerCallback(action="dec", data="hour"))
@@ -93,13 +128,16 @@ class InlineTimepicker:
             builder.button(text="↓", callback_data=TimepickerCallback(action="dec", data="period"))
 
         # OK button row
-        builder.button(text="OK", callback_data=TimepickerCallback(action="success", data="-"))
+        builder.button(text=user_info.localization.OK, callback_data=TimepickerCallback(action="success", data="-"))
+
+        # Cancel button row
+        builder.button(text=user_info.localization.Cancel, callback_data=TimepickerCallback(action="cancel", data="-"))
 
         # Adjust layout
         if use_12h:
-            builder.adjust(3, 3, 3, 1)  # 3 columns for 12h format
+            builder.adjust(3, 3, 3, 2)  # 3 columns for 12h format
         else:
-            builder.adjust(2, 2, 2, 1)  # 2 columns for 24h format
+            builder.adjust(2, 2, 2, 2)  # 2 columns for 24h format
 
         return builder.as_markup()
 
@@ -115,6 +153,10 @@ class InlineTimepicker:
         if callback_data.action == 'success':
             self.reset(chat_id)
             return current_time
+
+        if callback_data.action == 'cancel':
+            self.reset(chat_id)
+            return None
 
         if callback_data.action == 'inc':
             if callback_data.data == 'hour':
