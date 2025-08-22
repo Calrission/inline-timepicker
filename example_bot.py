@@ -73,7 +73,7 @@ async def handle_timepicker(query: CallbackQuery, callback_data: TimepickerCallb
 
 async def main() -> None:
     # Initialize Bot instance with a default parse mode which will be passed to all API calls
-    bot = Bot("7327799319:AAF3avmf9E8TZRdsn6jqqma0-7QxB8ugqeY",
+    bot = Bot("BOT_TOKEN",
               default=DefaultBotProperties(parse_mode=ParseMode.HTML))  # works from aiogram v.3.7.0
 
     # And the run events dispatching
