@@ -127,11 +127,11 @@ class InlineTimepicker:
         if use_12h:
             builder.button(text="↓", callback_data=TimepickerCallback(action="dec", data="period"))
 
-        # OK button row
-        builder.button(text=user_info.localization.OK, callback_data=TimepickerCallback(action="success", data="-"))
-
         # Cancel button row
         builder.button(text=user_info.localization.Cancel, callback_data=TimepickerCallback(action="cancel", data="-"))
+
+        # OK button row
+        builder.button(text=user_info.localization.OK, callback_data=TimepickerCallback(action="success", data="-"))
 
         # Adjust layout
         if use_12h:
@@ -141,7 +141,7 @@ class InlineTimepicker:
 
         return builder.as_markup()
 
-    def handle(self, chat_id: int, callback_data: TimepickerCallback) -> Optional[datetime.time]:
+    def handle(self, chat_id: int, callback_data: TimepickerCallback) -> tuple[bool, Optional[datetime.time]]:
         if not self.is_inited(chat_id):
             raise ValueError("Timepicker not initialized")
 
@@ -152,11 +152,11 @@ class InlineTimepicker:
 
         if callback_data.action == 'success':
             self.reset(chat_id)
-            return current_time
+            return False, current_time
 
         if callback_data.action == 'cancel':
             self.reset(chat_id)
-            return None
+            return False, None
 
         if callback_data.action == 'inc':
             if callback_data.data == 'hour':
@@ -186,4 +186,4 @@ class InlineTimepicker:
         new_time = datetime.time(new_hour, new_minute)
         user_info.current_time = new_time
         self._set_user_info(chat_id, user_info)
-        return None
+        return True, None
